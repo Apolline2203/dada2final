@@ -126,19 +126,20 @@ taxa.print <- taxa # Removing sequence rownames for display only
 rownames(taxa.print) <- NULL
 head(taxa.print)
 ```
-
+Dans unqs.mock on stocke les sequences correspondant à l'a communauté'échantillon témoin à partir du tableau ou les séquences chimères ont été éliminées. Puis on ne séléctionne que les séquences de l'échantillon témoin dont l'abondance est supérieure à 0. La fonction cat affiche le nombre d'ASV contenu dans l'échantillon témoin : ici on en a 20.
 ```{r}
 unqs.mock <- seqtab.nochim["Mock",]
 unqs.mock <- sort(unqs.mock[unqs.mock>0], decreasing=TRUE) # Drop ASVs absent in the Mock
 cat("DADA2 inferred", length(unqs.mock), "sample sequences present in the Mock community.\n")
 ```
-
+Dans mock.ref on stocke les séquences FASTA de l'échantillon témoin.
+Dans match.ref on stocke et compte les séquences ASV qui correspondant à celles de l'échantillon témoin. Puis cat affiche combien on a des séquences correspondant totalement : ici on en a 20. 
 ```{r}
 mock.ref <- getSequences(file.path(path, "HMP_MOCK.v35.fasta"))
 match.ref <- sum(sapply(names(unqs.mock), function(x) any(grepl(x, mock.ref))))
 cat("Of those,", sum(match.ref), "were exact matches to the expected reference sequences.\n")
 ```
-
+On fait remonter les packages phyloseq, Biostrings, ggplot2, et on affiche leur version.
 ```{r}
 library(phyloseq); packageVersion("phyloseq")
 ```
@@ -151,10 +152,12 @@ library(Biostrings); packageVersion("Biostrings")
 library(ggplot2); packageVersion("ggplot2")
 ```
 
+Cette fonction choisis un thème noir et blanc pour le graphique suivant et fontionne avec le package ggplot2.
 ```{r}
 theme_set(theme_bw())
 ```
 
+On extrait les informations du nom des échantillons, du sujet, du genre et du jour. On les place dans un tableau de métadonnées. Puis on créé une variable when indiquant si l'expérience à été faite "tôt" ou "tard"= plus de 100 jours après le sevrage
 ```{r}
 samples.out <- rownames(seqtab.nochim)
 subject <- sapply(strsplit(samples.out, "D"), `[`, 1)
@@ -167,6 +170,8 @@ samdf$When[samdf$Day>100] <- "Late"
 rownames(samdf) <- samples.out
 ```
 
+On insère dans ps un tableau des OTU à partir de seqtab.nochim. Les OTU sont dans les colon et et les échantillons sont dans les lignes. On prend aussi en compte dans ce tableau les métadonnées avec sample_data et le tableau taxonomique.
+prune_sample filtre et enlève les séquences de l'échantillon témoin.
 ```{r}
 ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE), 
                sample_data(samdf), 
@@ -174,6 +179,7 @@ ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE),
 ps <- prune_samples(sample_names(ps) != "Mock", ps) # Remove mock sample
 ```
 
+Dans l'objet dna on stocke les séquence d'ADN et les noms de taxons contenus dans ps. Les noms de taxons correspondant à des ASV sont modifiées. Merge_phyloseq permet de fusionner ps avec dna. Autrement dit on fusionne le tableau d'OTU avec les métadonnées et la taxonomie. Dans taxa_names(ps) on renomme les taxons de manière simplifié avec : ASV et un numéro.
 ```{r}
 dna <- Biostrings::DNAStringSet(taxa_names(ps))
 names(dna) <- taxa_names(ps)
@@ -181,26 +187,29 @@ ps <- merge_phyloseq(ps, dna)
 taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
 ps
 ```
-
+On fait un graphique représentant la richesse spécifique à partir de l'objet ps. En abscisse on met le nombre de jours. En ordonnées on affiche l'indice de Shannon et Simpson. En couleurs rouge et bleu on affiche la variable when.
 ```{r}
 plot_richness(ps, x="Day", measures=c("Shannon", "Simpson"), color="When")
 ```
 
+Dans ps.prop on stocke et transforme les comptage des OTU dans ps : on les divise par le total des comptage de l'échantillon. Puis on fait une analyse d'ordination des données selon une méthode non métrique, avec un calcul des distances écologiques de Bray-Curtis. 
 ```{r}
 # Transform data to proportions as appropriate for Bray-Curtis distances
 ps.prop <- transform_sample_counts(ps, function(otu) otu/sum(otu))
 ord.nmds.bray <- ordinate(ps.prop, method="NMDS", distance="bray")
 ```
 
+On en fait un graphique NMDS avec des couleurs de point qui correspondent à la variable when.
 ```{r}
 plot_ordination(ps.prop, ord.nmds.bray, color="When", title="Bray NMDS")
 ```
 
+Top20 identifie les 20 taxons les plus abondants. Ps.top contient le nombre d'OTU de ces 20 taxons divisés par la somme de toutes les OTU de l'échantillon pour chacun de ces taxons. Puis on en fait un graphique en barre. Chaque taxon est coloré selon sa famille taxonomique. Facet_wrap fait 2 sous graphique : un pour "early" et un pour "late" de la variable when. En abscisse on a le nobre de jours.
 ```{r}
 top20 <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:20]
 ps.top20 <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
 ps.top20 <- prune_taxa(top20, ps.top20)
 plot_bar(ps.top20, x="Day", fill="Family") + facet_wrap(~When, scales="free_x")
 ```
-
-.
+On observe que la famille la plus représentée est celle des Muribaculaceae à la fois pour"early" et "late". Ensuite vient la famille des Bacteroidaceae : on observe qu'elle est un peu plus le plus abordante dans de 2,5 à 10 jours après le sevrage.
+....
